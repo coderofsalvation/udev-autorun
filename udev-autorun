@@ -1,0 +1,216 @@
+#!/bin/bash 
+#
+# Copyright (c) Coder of Salvation (Leon van Kammen)  2013 
+# All rights reserved.
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of the University of California, Berkeley nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS "AS IS" AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE REGENTS AND CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+# 
+
+# handy variables
+#DEBUG=1     # <-- uncomment this to see stacktraces
+C_RESET="\E[0m"                         
+C_YELLOW="\E[1;33;40m"
+C_RED="\E[1;31;40m"                     
+C_GREEN="\E[1;32;40m"                   
+C_WHITE="\E[1;37m"
+VERSION="0.1"
+VERSIONFANCY="$C_WHITE v$VERSION$C_GREEN @ https://github.com/coderofsalvation/udev-autorun$C_RESET"
+REALPATH="$( dirname "$(readlink -f "$0")" )"
+TRAPPED=0
+LOGFILE="/var/log/udev-autorun.log"
+TMPFILE="/tmp/$(whoami).tmp"
+XPOPUP=0
+TIMESTAMP=$(date +%s)
+AUTORUNDIR=".autorun"
+TPL_MODULE='#!/bin/bash 
+# this is just an example autorun module
+
+hasX(){ pidof X &>/dev/null && return 0 && return 1; }
+
+hasX && DISPLAY=:0.0 xmessage "$0 says hello" || echo "$0 says hello"
+
+ls ../..
+printf "[$0] done\npress key to exit\";
+read -n1
+'
+
+_run(){
+  # utility function to run in X or normal terminal
+  hasX=$(pidof X)
+  errmsg="something went wrong in $1"
+  if [[ ${#hasX} == 0 ]]; then bash "$1" || _error "$errmsg"; return 0; fi
+  if [[ ${#hasX} > 0 ]] && which gnome-terminal &>/dev/null; then 
+    terminal="bash"
+    which gnome-terminal &>/dev/null && terminal="$(which gnome-terminal)"
+    which aterm &>/dev/null          && terminal="$(which aterm)"
+    which xterm &>/dev/null          && terminal="$(which xterm)"
+    _print "running: $terminal -e \"bash '$1'\""
+    DISPLAY=:0.0 $terminal -e "bash '$1'"
+  fi
+  return 1
+}
+
+# returns the mounted path of the current (usb)drive
+_getdrivepath(){
+  mount | grep $1 | sed "s/.*on //g;s/ type.*//g"
+}
+
+# catch exit 
+TRAPPED=0
+
+_error(){
+  printf "$C_RED[udev-autorun]$C_RESET $1\n"
+  exit 0
+  return 0
+}
+
+_print(){
+  printf "$C_GREEN[udev-autorun]$C_RESET $1\n"
+  return 0
+}
+
+# Copyright 2012 Yu-Jie Lin
+# MIT License
+# Log Call Stack
+_showstack() {
+  local i=0
+  local FRAMES=${#BASH_LINENO[@]}
+  # FRAMES-2 skips main, the last one in arrays
+  for ((i=FRAMES-2; i>=0; i--)); do
+    echo '  File' \"${BASH_SOURCE[i+1]}\", line ${BASH_LINENO[i]}, in ${FUNCNAME[i+1]}
+    # Grab the source code of the line
+    sed -n "${BASH_LINENO[i]}{s/^/    /;p}" "${BASH_SOURCE[i+1]}"
+  done
+}
+ 
+_onexit(){
+  [[ $TRAPPED == 1 ]] && return 0
+  TRAPPED=1
+  trap - SIGINT SIGTERM ERR SIGHUP 11 0 1 2 3 15 EXIT # clear trap so we are not triggered twice *FIXME* does not work
+  trap
+  return 0
+}
+
+_checkrequirements(){
+  for req in "${REQUIREMENTS[@]}"; do
+    hash "$req" 2>&-
+    if [ $? == 1 ]; then echo "please install '$req'"; exit 1; fi
+  done;
+}
+
+_genButtonString(){
+  i=0; ls $1 | while read line; do ((k=i+1)); ((j=i+10)); printf "$k:$j,"; ((i+=1)); done | head -c -1
+}
+
+_genOptionString(){
+  i=0; ls $1 | while read line; do ((j=i+1)); printf "$j. $1/$line\n"; ((i+=1)); done
+}
+
+# we added 9 to each returncode since xmessage returns 1 upon cancelbutton (awkward!)
+_getExitCode(){
+  f=$1;((f=f-9)); printf "%s" "$f"
+}
+  
+_ask(){
+  dir="$2"; [[ ${#dir} == 0 ]] && echo "empty dir $2" && return 1
+  msg="$1\n\n$(_genOptionString "$2")"
+  echo -e "$msg" | DISPLAY=:0.0 xmessage -file - -center -buttons "$(_genButtonString "$2")" 
+  return $?
+}
+
+_runmodule(){
+  exitcode=$1; moduledir="$2"; terminal="$3"
+  cd "$2"; i=0; ls $moduledir/* | while read module; do ((j=i+1)); 
+   if [[ $j == $exitcode ]]; then _run "$module"; fi
+    ((i+=1))
+  done
+}
+
+_runmodules(){
+  [[ ! -d "$1" ]] && echo "_runmodules got invalid dir $1" && exit 1
+  hasX=$(pidof X)
+  if [[ ${#hasX} == 0 ]]; then cd "$1"; ls | while read module; do _run $module; done; fi
+  if [[ ${#hasX} > 0  ]]; then 
+    _ask "the following actions are available:" "$1"; exitcode=$?
+    _runmodule $(_getExitCode $exitcode) "$1" 
+  fi 
+}
+
+remove(){
+  if [[ $DEVNAME ]] && [[ $ID_MODEL ]]; then 
+    mount | grep $DEVNAME | grep $ID_MODEL &> /dev/null && 
+    _print "unmounting drive: /media/$ID_MODEL" && sudo umount $DEVNAME
+  fi
+}
+
+_detectdrive(){
+  _print "udev-autorun triggered @ $(date) waiting for device to settle..";
+  echo "drive detected: $ID_SERIAL_SHORT | $ID_VENDOR | $ID_MODEL | $ID_MODEL_ID | $ID_FS_UUID @ $drivepath"
+  if [[ $ID_SERIAL_SHORT ]] && [[ $ID_VENDOR_ID ]] && [[ $ID_MODEL ]] && 
+     [[ $ID_MODEL_ID ]]; then 
+    _print "mounting drive: $DEVNAME -> /media/$ID_MODEL"
+    [[ ! -d /media/$ID_MODEL ]] && mkdir /media/$ID_MODEL 
+    mount -o umask=0,uid=1000,gid=1000 $DEVNAME /media/$ID_MODEL
+    if [[ -d /media/$ID_MODEL/.autorun ]] && [[ -d /media/$ID_MODEL/.autorun/modules.d ]]; then 
+      _print ".autorun folder detected \o/ ..executing modules"
+      _runmodules "/media/$ID_MODEL/.autorun/modules.d"; 
+    fi
+  fi
+}
+
+#                            <-- triggered by udev
+run(){
+  [[ "$1" == "--debug" ]] && env 
+  (_detectdrive &)
+}
+
+# <dir> [module]             <-- installs autorun (module) in directory
+init(){
+  [[ ! -d "$1" ]] && _error "cannot find dir $1" && exit 1
+  if [[ ! -d "$1/$AUTORUNDIR" ]]; then cd "$1"; mkdir "$AUTORUNDIR"; fi
+  if [[ ! -d "$1/$AUTORUNDIR/modules.d" ]]; then cd "$1"; mkdir "$AUTORUNDIR/modules.d"; fi
+  if [[ -n "$2" ]]; then 
+    modulefile="$1/$AUTORUNDIR/modules.d/$2"
+    [[ -f "$modulefile" ]] && _error "file '$modulefile' already exist" && exit 1
+    echo "$TPL_MODULE" > "$modulefile"
+    _print "created $modulefile <-- go ahead and edit :)"
+  fi
+  chmod -R 755 $1/$AUTORUNDIR/*
+}
+
+_usage(){
+  echo "Usage: "
+  grep "^[^_].\+(){$" $0 | while read line; do
+    local cmd=$(echo "$line" | sed "s/(){//g")
+    local info=$(grep -C0 -A0 -B1 "$cmd(){" $0 | sed "N;s/\n.*//g;" )
+    local me=$(basename $0)
+    printf "  $me %-5s %-40s\n" "$cmd" "$info" | grep "#" | sed 's/#//g'
+  done; echo "";
+  exit 
+}
+
+logsize=$(stat -c%s "$LOGFILE")
+test $# -lt 1 && _checkrequirements && _usage && exit 65
+[[ $logsize > 1000 ]] && :>/var/log/udev-autorun.log;
+"$@" | tee -a /var/log/udev-autorun.log; 
+exit 0
