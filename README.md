@@ -18,7 +18,7 @@ This is a simple shellscript which facilitates all this.
 
 With `udev-autorun` you can just add several autorun scripts on your usb device, and automatically run or prompt tasks to the user. Its modular so the possibilities are unlimited
 
-## INSTALL / GETTING STARTED ###
+### INSTALL / GETTING STARTED ###
 
 Do the following as *nonroot* user with sudo-privileges:
 
