@@ -152,7 +152,10 @@ _runmodules(){
   if [[ ${#hasX} == 0 ]]; then cd "$1"; ls | while read module; do _run $module; done; fi
   if [[ ${#hasX} > 0  ]]; then 
     _ask "the following actions are available:" "$1"; exitcode=$?
-    _runmodule $(_getExitCode $exitcode) "$1" 
+    if [[ $exitcode != 1 ]]; then 
+      _runmodule $(_getExitCode $exitcode) "$1"
+      _runmodules "$1" # recursive until user presses closebutton
+    fi
   fi 
 }
 
