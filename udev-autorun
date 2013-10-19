@@ -50,7 +50,7 @@ hasX(){ pidof X &>/dev/null && return 0 && return 1; }
 hasX && DISPLAY=:0.0 xmessage "$0 says hello" || echo "$0 says hello"
 
 ls ../..
-printf "[$0] done\npress key to exit\";
+printf "[$0] done\npress key to exit";
 read -n1
 '
 
