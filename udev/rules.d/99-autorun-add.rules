@@ -1,1 +1,1 @@
-SUBSYSTEM=="block", KERNEL=="sd*", ACTION=="add", RUN+="/home/sqz/opt/udev-autorun/udev-autorun run &"
+SUBSYSTEM=="block", KERNEL=="sd*", ACTION=="add", RUN+="/opt/udev-autorun/udev-autorun run &"
