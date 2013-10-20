@@ -21,6 +21,7 @@ done
 sudo ln -fs /opt/udev-autorun/udev-autorun /usr/bin/udev-autorun
 
 echo "[x] restarting udev"
-sudo service udev restart
+sudo which service && sudo service udev restart
+sudo which systemctl && sudo systemctl restart udev
 
 echo "[x] done"
