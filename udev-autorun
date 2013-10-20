@@ -39,6 +39,7 @@ REALPATH="$( dirname "$(readlink -f "$0")" )"
 TRAPPED=0
 LOGFILE="/var/log/udev-autorun.log"
 TMPFILE="/tmp/$(whoami).tmp"
+MOUNTDIR="media"; [[ ! -d "/media" ]] && MOUNTDIR="mnt"
 XPOPUP=0
 TIMESTAMP=$(date +%s)
 AUTORUNDIR=".autorun"
@@ -162,7 +163,7 @@ _runmodules(){
 remove(){
   if [[ $DEVNAME ]] && [[ $ID_MODEL ]]; then 
     mount | grep $DEVNAME | grep $ID_MODEL &> /dev/null && 
-    _print "unmounting drive: /media/$ID_MODEL" && sudo umount $DEVNAME
+    _print "unmounting drive: /$MOUNTDIR/$ID_MODEL" && sudo umount $DEVNAME
   fi
 }
 
@@ -171,12 +172,12 @@ _detectdrive(){
   echo "drive detected: $ID_SERIAL_SHORT | $ID_VENDOR | $ID_MODEL | $ID_MODEL_ID | $ID_FS_UUID @ $drivepath"
   if [[ $ID_SERIAL_SHORT ]] && [[ $ID_VENDOR_ID ]] && [[ $ID_MODEL ]] && 
      [[ $ID_MODEL_ID ]]; then 
-    _print "mounting drive: $DEVNAME -> /media/$ID_MODEL"
-    [[ ! -d /media/$ID_MODEL ]] && mkdir /media/$ID_MODEL 
-    mount -o umask=0,uid=1000,gid=1000 $DEVNAME /media/$ID_MODEL
-    if [[ -d /media/$ID_MODEL/.autorun ]] && [[ -d /media/$ID_MODEL/.autorun/modules.d ]]; then 
+    _print "mounting drive: $DEVNAME -> /$MOUNTDIR/$ID_MODEL"
+    [[ ! -d /$MOUNTDIR/$ID_MODEL ]] && mkdir /$MOUNTDIR/$ID_MODEL 
+    mount -o umask=0,uid=1000,gid=1000 $DEVNAME /$MOUNTDIR/$ID_MODEL
+    if [[ -d /$MOUNTDIR/$ID_MODEL/.autorun ]] && [[ -d /$MOUNTDIR/$ID_MODEL/.autorun/modules.d ]]; then 
       _print ".autorun folder detected \o/ ..executing modules"
-      _runmodules "/media/$ID_MODEL/.autorun/modules.d"; 
+      _runmodules "/$MOUNTDIR/$ID_MODEL/.autorun/modules.d"; 
     fi
   fi
 }
